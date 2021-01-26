@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<configuration packages="zhong.log4j2.server.commpent">
+    <Appenders>
+        <!-- 输出到控制台 -->
+        <Console name="console" target="SYSTEM_OUT">
+            <!--输出日志的格式，使用SpringBoot配色（仅能在SpringBoot项目中使用） -->
+            <PatternLayout
+                    pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} %pid %t %p %C %M %L - %m%n"/>
+        </Console>
+        <P2pServerAppender name="test" project="demo" port="8080">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] [%-5p] {%F:%L} - %m%n" />
+        </P2pServerAppender>
+    </Appenders>
+
+    <Loggers>
+        <root level="debug">
+            <AppenderRef ref="console"/>
+            <AppenderRef ref="test"/>
+        </root>
+    </Loggers>
+</configuration>
