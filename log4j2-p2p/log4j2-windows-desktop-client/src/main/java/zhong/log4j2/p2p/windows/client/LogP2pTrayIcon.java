@@ -1,6 +1,8 @@
 package zhong.log4j2.p2p.windows.client;
 
 import zhong.log4j2.p2p.windows.client.config.ToolTipMessages;
+import zhong.log4j2.p2p.windows.client.log.message.LogMessageManager;
+import zhong.log4j2.p2p.windows.client.mainform.P2pClientMainForm;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -42,12 +44,36 @@ public class LogP2pTrayIcon extends java.awt.TrayIcon {
                 trayIcon.setToolTip(ToolTipMessages.NO_NEWS);// 设置提示信息
                 final PopupMenu popupMenu = new PopupMenu();// 创建快捷采集
                 {
-                    MenuItem menuItem = new MenuItem("查看异常日志");
+                    MenuItem menuItem = new MenuItem("清理日志队列");
                     // 添加点击事件
                     menuItem.addActionListener(new AbstractAction() {
                         @Override
                         public void actionPerformed(ActionEvent e) {
-                            System.out.println("快捷菜单单击");
+                            LogMessageManager.clear();
+                            P2pClientMainForm.clear();
+                        }
+                    });
+                    popupMenu.add(menuItem);
+                }
+                {
+                    // 显示主窗口
+                    MenuItem menuItem = new MenuItem("显示主窗口");
+                    menuItem.addActionListener(new AbstractAction() {
+                        @Override
+                        public void actionPerformed(ActionEvent e) {
+                            P2pClientMainForm.createMainForm();
+                        }
+                    });
+                    popupMenu.add(menuItem);
+                }
+                {
+                    // 退出
+                    // 显示主窗口
+                    MenuItem menuItem = new MenuItem("退出");
+                    menuItem.addActionListener(new AbstractAction() {
+                        @Override
+                        public void actionPerformed(ActionEvent e) {
+                            System.exit(0);// 退出系统
                         }
                     });
                     popupMenu.add(menuItem);
