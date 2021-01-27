@@ -8,7 +8,13 @@
 
 ## log4j2的使用方式
 
-配置服务器端的log4j2.xml, 以下配置为例
+**服务端在启动时需要通过指令引入jar包**
+
+```bash
+$ java -classpath log4j2-server-commpent-1.0-SNAPSHOT.jar -jar server.jar
+```
+
+**配置服务器端的log4j2.xml, 以下配置为例**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8" ?>
