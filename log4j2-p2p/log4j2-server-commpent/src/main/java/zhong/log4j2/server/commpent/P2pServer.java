@@ -6,6 +6,7 @@ import com.alibaba.fastjson.JSONValidator;
 import org.apache.logging.log4j.Level;
 
 import java.io.IOException;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
@@ -22,6 +23,8 @@ import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.logging.LogManager;
+import java.util.logging.Logger;
 
 /**
  * p2p 服务端
@@ -49,6 +52,10 @@ class P2pServer implements Runnable {
      * 项目
      */
     private final String project;
+    /**
+     * 打印日志
+     */
+    private static final Logger log = Logger.getLogger(P2pServer.class.getName());
 
     private P2pServer(int port, String project) {
         this.project = project;
@@ -63,8 +70,10 @@ class P2pServer implements Runnable {
             this.serverSocketChannel.bind(socketAddress);
             // 注册选择器, 设置触发事件为建立连接事件
             this.serverSocketChannel.register(this.selector, SelectionKey.OP_ACCEPT);
+            log.info("端口: " + port + "绑定成功");
+        } catch (BindException ignored) {
         } catch (Exception e) {
-            e.printStackTrace();
+            log.log(java.util.logging.Level.SEVERE, e.getMessage(), e);
             try {
                 if (Objects.nonNull(this.selector)) this.selector.close();
                 if (Objects.nonNull(this.serverSocketChannel)) this.serverSocketChannel.close();
@@ -79,6 +88,7 @@ class P2pServer implements Runnable {
         p2pServer.init();
         p2pServer.service.execute(p2pServer);
         p2pServer.close = false;
+        log.info("log4j2-p2p-server-starting...");
         return p2pServer;
     }
 
@@ -186,7 +196,6 @@ class P2pServer implements Runnable {
                                     this.socketMap.remove(socketChannel);
                                 }
                             } catch (IOException | P2pServerException | EnumConstantNotPresentException e) {
-                                e.printStackTrace();
                                 if (socketChannel != null) {
                                     socketChannel.close();
                                 }
@@ -195,12 +204,12 @@ class P2pServer implements Runnable {
                             }
                         }
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        log.log(java.util.logging.Level.SEVERE, e.getMessage(), e);
                     }
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            log.log(java.util.logging.Level.SEVERE, e.getMessage(), e);
         }
     }
 
@@ -221,12 +230,12 @@ class P2pServer implements Runnable {
             } catch (IOException e) {
                 try {
                     socketChannel.close();
-                } catch (IOException ioException) {
-                    ioException.printStackTrace();
+                } catch (IOException ignored) {
                 }
+                entry.getValue().close();// 清理无效资源
                 return true;
             } catch (Exception e) {
-                e.printStackTrace();
+                log.log(java.util.logging.Level.SEVERE, e.getMessage(), e);
                 return false;
             }
         });

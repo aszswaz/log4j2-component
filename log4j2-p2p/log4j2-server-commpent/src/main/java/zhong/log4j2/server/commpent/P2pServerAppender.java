@@ -85,7 +85,7 @@ public class P2pServerAppender extends AbstractAppender {
         }
         // 启动服务
         P2pServer p2pServer = P2pServer.start(Integer.parseInt(port), project);
-        servers.add(p2pServer);
+        if (Objects.nonNull(p2pServer)) servers.add(p2pServer);
         return new P2pServerAppender(name, project, filter, layout, false, Property.EMPTY_ARRAY, p2pServer);
     }
 

@@ -7,7 +7,7 @@
             <PatternLayout
                     pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} %pid %t %p %C %M %L - %m%n"/>
         </Console>
-        <P2pServerAppender name="test" project="demo" port="8080">
+        <P2pServerAppender name="test" project="demo" port="13154">
             <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] [%-5p] {%F:%L} - %m%n" />
         </P2pServerAppender>
     </Appenders>

@@ -2,6 +2,7 @@ package zhong.log4j2.p2p.windows.client.log.message;
 
 import com.alibaba.fastjson.JSONObject;
 import com.sun.xml.internal.messaging.saaj.util.ByteInputStream;
+import com.sun.xml.internal.ws.policy.privateutil.PolicyUtils;
 import org.apache.commons.lang3.time.DateFormatUtils;
 import zhong.log4j2.p2p.windows.client.LogP2pTrayIcon;
 import zhong.log4j2.p2p.windows.client.config.Config;
@@ -40,10 +41,6 @@ public class LogMessageReceive implements Runnable {
      */
     private static final ExecutorService SERVICE = Executors.newSingleThreadExecutor();
     /**
-     * 使用nio进行通信, nio事件触发器
-     */
-    private final Selector selector;
-    /**
      * 是否已关闭
      */
     private boolean closed;
@@ -51,57 +48,20 @@ public class LogMessageReceive implements Runnable {
      * 定时发送ping让服务端保持连接
      */
     private Timer timer;
-
-    public LogMessageReceive(Selector selector) {
-        this.selector = selector;
-    }
+    /**
+     * 事件触发器
+     */
+    private Selector selector;
+    /**
+     * socket连接
+     */
+    private SocketChannel socketChannel;
 
     /**
      * 运行接收线程
      */
-    public static void startReceive() throws IOException {
-        SocketChannel socketChannel = SocketChannel.open();
-        socketChannel.configureBlocking(false);// 非阻塞
-        // 连接服务端
-        // 非阻塞模式, 并且正在连接
-        if (!socketChannel.connect(new InetSocketAddress(Config.SERVER_HOST, Config.SERVER_PORT))) {
-            // 完成套接字连接
-            if (socketChannel.finishConnect()) {
-                // 注册到多路复用器
-                Selector selector = Selector.open();
-                socketChannel.register(selector, SelectionKey.OP_READ);// 设置触发事件为: 读事件
-                // 构建运行任务
-                LogMessageReceive receive = new LogMessageReceive(selector);
-                // 提交任务到线程池
-                SERVICE.execute(receive);
-                receive.closed = false;
-                receive.timer = new Timer("log-p2p-server-ping");
-                receive.timer.schedule(new TimerTask() {
-                    @Override
-                    public void run() {
-                        try {
-                            LogMessageEntity logMessageEntity = new LogMessageEntity();
-                            logMessageEntity.setInstruction(Instructions.ping);
-                            logMessageEntity.setTime(System.currentTimeMillis());
-                            byte[] bytes = JSONObject.toJSONBytes(logMessageEntity);
-                            ByteBuffer byteBuffer = ByteBuffer.allocate(bytes.length);
-                            byteBuffer.put(bytes);
-                            byteBuffer.flip();// 缓冲区准备完毕
-                            socketChannel.write(byteBuffer);// 写出
-                        } catch (IOException e) {
-                            try {
-                                socketChannel.close();
-                            } catch (IOException ioException) {
-                                ioException.printStackTrace();
-                            }
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    }
-                }, 10000, 10000);
-                receive.hookUp();// 挂钩jvm退出事件
-            }
-        }
+    public static void startReceive() {
+        SERVICE.execute(new LogMessageReceive());
     }
 
     /**
@@ -143,6 +103,48 @@ public class LogMessageReceive implements Runnable {
     @Override
     public void run() {
         try {
+            this.connect();// 连接
+            this.obtain();// 不断的获取log推送
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 推送到系统通知
+     */
+    private void pushTrayIcon(LogMessageEntity messageEntity) {
+        // 推送到桌面图标
+        TrayIcon[] trayIcons = SystemTray.getSystemTray().getTrayIcons();
+        // 拼接消息
+        String time = DateFormatUtils.format(messageEntity.getTime(), "yyyy-MM-dd HH:mm:ss");
+        String shortMessage = "时间: " + time + System.lineSeparator()
+                + "级别: " + messageEntity.getLevel() + System.lineSeparator() +
+                "摘要: " + messageEntity.getSummary();
+        for (TrayIcon trayIcon : trayIcons) {
+            if (trayIcon instanceof LogP2pTrayIcon) {
+                trayIcon.setToolTip(shortMessage);
+                TrayIcon.MessageType messageType;
+                if ("ERROR".equalsIgnoreCase(messageEntity.getLevel())) {
+                    messageType = TrayIcon.MessageType.ERROR;
+                } else if ("WARN".equalsIgnoreCase(messageEntity.getLevel())) {
+                    messageType = TrayIcon.MessageType.WARNING;
+                } else if ("INFO".equalsIgnoreCase(messageEntity.getLevel())) {
+                    messageType = TrayIcon.MessageType.INFO;
+                } else {
+                    messageType = TrayIcon.MessageType.NONE;
+                }
+                // 显示消息
+                trayIcon.displayMessage("项目: " + messageEntity.getProject(), shortMessage, messageType);
+            }
+        }
+    }
+
+    /**
+     * 获取日志事件
+     */
+    private void obtain() {
+        try {
             // 监听触发的事件, 无事件就会阻塞
             while (this.selector.select() > 0) {
                 Set<SelectionKey> keys = this.selector.selectedKeys();// 获得触发的事件列表
@@ -181,32 +183,41 @@ public class LogMessageReceive implements Runnable {
     }
 
     /**
-     * 推送到系统通知
+     * 建立连接
      */
-    private void pushTrayIcon(LogMessageEntity messageEntity) {
-        // 推送到桌面图标
-        TrayIcon[] trayIcons = SystemTray.getSystemTray().getTrayIcons();
-        // 拼接消息
-        String time = DateFormatUtils.format(messageEntity.getTime(), "yyyy-MM-dd HH:mm:ss");
-        String shortMessage = "时间: " + time + System.lineSeparator()
-                + "级别: " + messageEntity.getLevel() + System.lineSeparator() +
-                "摘要: " + messageEntity.getSummary();
-        for (TrayIcon trayIcon : trayIcons) {
-            if (trayIcon instanceof LogP2pTrayIcon) {
-                trayIcon.setToolTip(shortMessage);
-                TrayIcon.MessageType messageType;
-                if ("ERROR".equalsIgnoreCase(messageEntity.getLevel())) {
-                    messageType = TrayIcon.MessageType.ERROR;
-                } else if ("WARN".equalsIgnoreCase(messageEntity.getLevel())) {
-                    messageType = TrayIcon.MessageType.WARNING;
-                } else if ("INFO".equalsIgnoreCase(messageEntity.getLevel())) {
-                    messageType = TrayIcon.MessageType.INFO;
-                } else {
-                    messageType = TrayIcon.MessageType.NONE;
+    private void connect() throws IOException {
+        // 挂钩jvm
+        this.hookUp();
+        {
+            // 定时ping
+            this.timer = new Timer("log4j2-p2p-ping");
+            this.timer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    try {
+                        LogMessageEntity logMessageEntity = new LogMessageEntity();
+                        logMessageEntity.setInstruction(Instructions.ping);
+                        logMessageEntity.setTime(System.currentTimeMillis());
+                        String jsonStr = JSONObject.toJSONString(logMessageEntity);
+                        ByteBuffer byteBuffer = ByteBuffer.allocate(jsonStr.length());
+                        byteBuffer.put(jsonStr.getBytes(StandardCharsets.UTF_8));
+                        byteBuffer.flip();
+                        socketChannel.write(byteBuffer);
+                    } catch (IOException e) {
+                        close();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
-                // 显示消息
-                trayIcon.displayMessage("项目: " + messageEntity.getProject(), shortMessage, messageType);
-            }
+            }, 10000, 10000);
+        }
+        {
+            // 连接服务器
+            this.socketChannel = SocketChannel.open(new InetSocketAddress(Config.SERVER_HOST, Config.SERVER_PORT));
+            this.socketChannel.configureBlocking(false);
+            this.selector = Selector.open();
+            if (!this.socketChannel.finishConnect()) throw new IOException("连接失败");
+            this.socketChannel.register(this.selector, SelectionKey.OP_READ);
         }
     }
 }
