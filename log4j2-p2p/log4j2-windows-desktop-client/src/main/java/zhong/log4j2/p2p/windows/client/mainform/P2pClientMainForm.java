@@ -33,7 +33,7 @@ public class P2pClientMainForm extends JFrame {
         jTextArea.setText(LogMessageManager.getAllMessageByString());
         jTextArea.setLayout(null);
         jTextArea.setBackground(new Color(243, 236, 236, 250));
-        // jTextArea.setEditable(false);
+        jTextArea.setEditable(false);
         jTextArea.setFont(new Font("微软雅黑", Font.PLAIN, 15));
 
         JScrollPane scrollPane = new JScrollPane();
