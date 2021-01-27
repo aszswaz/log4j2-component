@@ -12,13 +12,9 @@ class Config {
     /**
      * 保持连接的口令
      */
-    public static final String PING = "ping" + System.lineSeparator();
+    public static final String PING = "ping";
     /**
      * 客户端建立连接时发送欢迎消息
      */
-    public static final String WELCOME = "status: 200" + System.lineSeparator() + "welcome to log4j2 p2p server" + System.lineSeparator();
-    /**
-     * 日期格式化
-     */
-    public static final FastDateFormat DATE_FORMAT = FastDateFormat.getInstance("yyyy-MM-dd HH:mm:ss.SSS");
+    public static final String WELCOME = "welcome to log4j2 p2p server";
 }

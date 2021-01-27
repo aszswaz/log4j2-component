@@ -1,0 +1,10 @@
+status: 200
+welcome to log4j2 p2p server
+project: demo
+level: ERROR
+time: 2021-01-27 09:10:37.350
+logger: zhong.log4j2.server.commpent.LogTest
+
+2021-01-27 09:10:37.350 [main] [ERROR] {LogTest.java:13} - 测试
+java.lang.Exception: 测试
+	at zhong.log4j2.server.commpent.LogTest.main(LogTest.java:13) [test-classes/:?]

@@ -1,6 +1,8 @@
 package zhong.log4j2.server.commpent;
 
-import lombok.extern.log4j.Log4j2;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.JSONValidator;
 import org.apache.logging.log4j.Level;
 
 import java.io.IOException;
@@ -20,7 +22,6 @@ import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * p2p 服务端
@@ -28,7 +29,6 @@ import java.util.concurrent.ThreadPoolExecutor;
  * @author aszswaz
  * @date 2021-01-26 星期二 12:31
  */
-@Log4j2
 class P2pServer implements Runnable {
     private ServerSocketChannel serverSocketChannel;
     private Selector selector;
@@ -45,8 +45,13 @@ class P2pServer implements Runnable {
      * 是否关闭
      */
     private boolean close;
+    /**
+     * 项目
+     */
+    private final String project;
 
-    private P2pServer(int port) {
+    private P2pServer(int port, String project) {
+        this.project = project;
         // 使用nio
         try {
             this.selector = Selector.open();
@@ -69,8 +74,8 @@ class P2pServer implements Runnable {
         }
     }
 
-    public static P2pServer start(int port) {
-        P2pServer p2pServer = new P2pServer(port);
+    public static P2pServer start(int port, String project) {
+        P2pServer p2pServer = new P2pServer(port, project);
         p2pServer.init();
         p2pServer.service.execute(p2pServer);
         p2pServer.close = false;
@@ -103,14 +108,12 @@ class P2pServer implements Runnable {
     public void close() {
         try {
             if (this.close) return;
-            log.info("closing");
             this.selector.close();
             this.service.shutdownNow();
             this.timer.cancel();
             this.close = true;
-            log.info("closed");
         } catch (Exception e) {
-            log.error(e.getMessage(), e);
+            e.printStackTrace();
         }
         this.socketMap.forEach((socket, client) -> client.close());
     }
@@ -118,7 +121,6 @@ class P2pServer implements Runnable {
     @Override
     public void run() {
         try {
-            log.info("starting log4j2 p2p server...");
             // 判断选择器当中是否存在事件, 如果没有事件则进入阻塞
             while (this.selector.select() > 0) {
                 // 获得触发事件的key
@@ -142,8 +144,16 @@ class P2pServer implements Runnable {
                             clientConnect.setSelectionKey(socketChannel.register(this.selector, SelectionKey.OP_READ));
                             this.socketMap.put(socketChannel, clientConnect);
                             // 写出欢迎语
-                            ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
-                            byteBuffer.put(Config.WELCOME.getBytes(StandardCharsets.UTF_8));
+                            MessageEntity messageEntity = new MessageEntity();
+                            messageEntity.setInstruction(Instructions.welcome);
+                            messageEntity.setSummary(Config.WELCOME);
+                            messageEntity.setTime(System.currentTimeMillis());
+                            messageEntity.setLevel(Level.INFO.name());
+                            messageEntity.setProject(this.project);
+                            String jsonStr = JSONObject.toJSONString(messageEntity);
+                            byte[] bytes = jsonStr.getBytes(StandardCharsets.UTF_8);
+                            ByteBuffer byteBuffer = ByteBuffer.allocate(bytes.length);
+                            byteBuffer.put(bytes);
                             byteBuffer.flip();// 数据写出做好准备
                             socketChannel.write(byteBuffer);
                         } else if (selectionKey.isReadable()) {
@@ -160,7 +170,10 @@ class P2pServer implements Runnable {
                                     continue;
                                 }
                                 String message = new String(byteBuffer.array(), 0, len, StandardCharsets.UTF_8);
-                                if (Config.PING.equals(message)) {
+                                if (!JSONValidator.from(message).validate())
+                                    throw new P2pServerException("json数据格式不合法");
+                                MessageEntity messageEntity = JSONObject.parseObject(message, MessageEntity.class);// 判断指令是否为ping
+                                if (messageEntity.getInstruction() == Instructions.ping) {
                                     // 刷新连接保持时间
                                     this.socketMap.get(socketChannel).setLastPing(System.currentTimeMillis());
                                     // 回应客户端
@@ -172,38 +185,36 @@ class P2pServer implements Runnable {
                                     socketChannel.close();
                                     this.socketMap.remove(socketChannel);
                                 }
-                            } catch (IOException e) {
-                                socketChannel.close();
+                            } catch (IOException | P2pServerException | EnumConstantNotPresentException e) {
+                                e.printStackTrace();
+                                if (socketChannel != null) {
+                                    socketChannel.close();
+                                }
                                 selectionKey.cancel();
+                                this.socketMap.remove(socketChannel);
                             }
                         }
                     } catch (Exception e) {
-                        log.info(e.getMessage(), e);
+                        e.printStackTrace();
                     }
                 }
             }
-        } catch (
-                IOException e) {
-            log.error(e.getMessage(), e);
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
     /**
      * 群发日志消息
      */
-    public void sendGroup(String header, byte[] message) {
+    public void sendGroup(byte[] message) {
         // 向保持着连接的客户端发送信息
         this.socketMap.entrySet().removeIf(entry -> {
             SocketChannel socketChannel = null;
             try {
                 socketChannel = entry.getKey();
-                byte[] headerBytes = header.getBytes(StandardCharsets.UTF_8);
-                byte[] end = "\r\n".getBytes(StandardCharsets.UTF_8);// 一行结束或消息发送完毕
-                ByteBuffer byteBuffer = ByteBuffer.allocate(headerBytes.length + message.length + end.length << 2);
-                byteBuffer.put(headerBytes);
+                ByteBuffer byteBuffer = ByteBuffer.allocate(message.length);
                 byteBuffer.put(message);
-                byteBuffer.put(end);
-                byteBuffer.put(end);
                 byteBuffer.flip();// 缓冲区准备就绪
                 socketChannel.write(byteBuffer);
                 return false;
@@ -211,11 +222,11 @@ class P2pServer implements Runnable {
                 try {
                     socketChannel.close();
                 } catch (IOException ioException) {
-                    log.error(ioException.getMessage(), ioException);
+                    ioException.printStackTrace();
                 }
                 return true;
             } catch (Exception e) {
-                log.error(e.getMessage(), e);
+                e.printStackTrace();
                 return false;
             }
         });

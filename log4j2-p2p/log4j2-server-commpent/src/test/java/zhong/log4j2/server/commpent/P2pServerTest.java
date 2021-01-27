@@ -7,6 +7,6 @@ package zhong.log4j2.server.commpent;
  */
 public class P2pServerTest {
     public static void main(String[] args) {
-        P2pServer.start(8080);
+        P2pServer.start(8080, "test");
     }
 }

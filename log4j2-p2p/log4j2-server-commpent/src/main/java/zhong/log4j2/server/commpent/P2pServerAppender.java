@@ -1,5 +1,6 @@
 package zhong.log4j2.server.commpent;
 
+import com.alibaba.fastjson.JSONObject;
 import lombok.extern.log4j.Log4j2;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.core.Filter;
@@ -15,6 +16,7 @@ import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -25,6 +27,7 @@ import java.util.Objects;
  * @author aszswaz
  * @date 2021-01-26 星期二 10:58
  */
+@SuppressWarnings("unused")
 @Log4j2
 @Plugin(name = "P2pServerAppender", category = "Core", elementType = "appender", printObject = true)
 public class P2pServerAppender extends AbstractAppender {
@@ -48,12 +51,16 @@ public class P2pServerAppender extends AbstractAppender {
         if (event.getLoggerName().contains(P2pServerAppender.class.getPackage().getName()) && !event.getLoggerName().contains("Test")) {
             return;
         }
-        // 群发消息
-        String header = "project: " + this.project + "\r\n"
-                + "level: " + event.getLevel().name() + "\r\n"
-                + "time: " + Config.DATE_FORMAT.format(event.getTimeMillis()) + "\r\n"
-                + "logger: " + event.getLoggerName() + "\r\n\r\n";
-        this.p2pServer.sendGroup(header, super.getLayout().toByteArray(event));
+        MessageEntity messageEntity = new MessageEntity();
+        messageEntity.setInstruction(Instructions.log);
+        messageEntity.setSummary(event.getMessage().getFormattedMessage());// 概要
+        messageEntity.setBody(new String(super.getLayout().toByteArray(event), StandardCharsets.UTF_8));
+        messageEntity.setTime(event.getTimeMillis());
+        messageEntity.setLevel(event.getLevel().name());
+        messageEntity.setLogger(event.getLoggerName());
+        messageEntity.setProject(this.project);
+        String jsonStr = JSONObject.toJSONString(messageEntity);
+        this.p2pServer.sendGroup(jsonStr.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -77,7 +84,7 @@ public class P2pServerAppender extends AbstractAppender {
             layout = PatternLayout.createDefaultLayout();
         }
         // 启动服务
-        P2pServer p2pServer = P2pServer.start(Integer.parseInt(port));
+        P2pServer p2pServer = P2pServer.start(Integer.parseInt(port), project);
         servers.add(p2pServer);
         return new P2pServerAppender(name, project, filter, layout, false, Property.EMPTY_ARRAY, p2pServer);
     }
